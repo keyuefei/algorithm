@@ -1,7 +1,16 @@
 package heap;
 
 import java.text.DecimalFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoField;
 import java.util.*;
+import java.util.concurrent.DelayQueue;
+import java.util.concurrent.Delayed;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 学习url: https://time.geekbang.org/column/article/69913
@@ -14,16 +23,77 @@ import java.util.*;
 public class Main {
 
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
 
 //        heapSort();
 //        topK();
 //        dynamicMedian();
 //        percent99();
-        hotSearchKeyWord();
+//        hotSearchKeyWord();
+        delayQueue();
+    }
 
+
+    /**
+     * 延时队列： 可参考java的delayQueue，内部使用锁与优先队列（底层为堆）实现。
+     * 场景：
+     * 1. 超过30分钟未支付，订单自动作废。
+     * 2. 用户下单后延时短信提醒。
+     * <p>
+     * <p>
+     * 超过30分钟未支付，订单自动作废
+     * 注意： DelayQueue.take()等待时间单位是ns； 计算expire时，需要加L，否则会当成int计算而溢出。
+     */
+    private static void delayQueue() throws InterruptedException {
+        DelayQueue delayQueue = new DelayQueue();
+
+        //过期时间 10 s
+        long expire = 10 * 1000 * 1000 * 1000L;
+
+        DateTimeFormatter df = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        class CancelOrderTask implements Delayed, Runnable {
+
+            private long createNanoSeconds;
+            private String name;
+
+            CancelOrderTask(String name, long createTime) {
+                //纳秒
+                this.createNanoSeconds = createTime * 1000 * 1000L;
+                this.name = name;
+            }
+
+            @Override
+            public long getDelay(TimeUnit unit) {
+                return (createNanoSeconds + expire) - LocalDateTime.now().toInstant(ZoneOffset.of("+8")).toEpochMilli() * 1000 * 1000;
+            }
+
+            @Override
+            public int compareTo(Delayed o) {
+                CancelOrderTask c = (CancelOrderTask) o;
+                //创建时间在前的排在堆顶。
+                return (int) (this.createNanoSeconds - c.createNanoSeconds);
+            }
+
+            @Override
+            public void run() {
+                System.out.println(LocalDateTime.now().format(df) + "\t" + name);
+            }
+        }
+
+
+        delayQueue.add(new CancelOrderTask("t1", LocalDateTime.of(2020, 7, 8, 18, 42, 10).toInstant(ZoneOffset.of("+8")).toEpochMilli()));
+        delayQueue.add(new CancelOrderTask("t2", LocalDateTime.of(2020, 7, 8, 18, 42, 20).toInstant(ZoneOffset.of("+8")).toEpochMilli()));
+        //delayQueue.poll(); poll没有满足条件的直接返回null
+        //模拟线程池，循环从其中调用，并执行任务
+        while (true) {
+            //没有符合条件的，会循环取到为止。
+            Runnable task = (Runnable) delayQueue.take();
+            new Thread(task).start();
+
+        }
 
     }
+
 
     /**
      * 热门搜索key的topK,
@@ -47,7 +117,7 @@ public class Main {
         List<String> keys = new ArrayList<>();
         Random random = new Random();
         for (int i = 0; i < 1000; i++) {
-            int j = (int) (random.nextDouble()*base.length);
+            int j = (int) (random.nextDouble() * base.length);
             keys.add(base[j]);
         }
 
